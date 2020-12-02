@@ -106,10 +106,10 @@ public extension UIView {
      @param completion The completion closure, executed after the toast view disappears.
             didTap will be `true` if the toast view was dismissed from a tap.
      */
-    func makeToast(_ message: String?, duration: TimeInterval = ToastManager.shared.duration, position: ToastPosition = ToastManager.shared.position, title: String? = nil, image: UIImage? = nil, style: ToastStyle = ToastManager.shared.style, completion: ((_ didTap: Bool) -> Void)? = nil) {
+    func makeToast(_ message: String?, duration: TimeInterval = ToastManager.shared.duration, position: ToastPosition = ToastManager.shared.position, title: String? = nil, image: UIImage? = nil, animationType: ToastAnimationType = ToastManager.shared.animationType, style: ToastStyle = ToastManager.shared.style, completion: ((_ didTap: Bool) -> Void)? = nil) {
         do {
             let toast = try toastViewForMessage(message, title: title, image: image, style: style)
-            showToast(toast, duration: duration, position: position, completion: completion)
+            showToast(toast, duration: duration, position: position, animationType: animationType, completion: completion)
         } catch ToastError.missingParameters {
             print("Error: message, title, and image are all nil")
         } catch {}
@@ -127,10 +127,10 @@ public extension UIView {
      @param completion The completion closure, executed after the toast view disappears.
             didTap will be `true` if the toast view was dismissed from a tap.
      */
-    func makeToast(_ message: String?, duration: TimeInterval = ToastManager.shared.duration, point: CGPoint, title: String?, image: UIImage?, style: ToastStyle = ToastManager.shared.style, completion: ((_ didTap: Bool) -> Void)?) {
+    func makeToast(_ message: String?, duration: TimeInterval = ToastManager.shared.duration, point: CGPoint, title: String?, image: UIImage?, animationType: ToastAnimationType = ToastManager.shared.animationType, style: ToastStyle = ToastManager.shared.style, completion: ((_ didTap: Bool) -> Void)?) {
         do {
             let toast = try toastViewForMessage(message, title: title, image: image, style: style)
-            showToast(toast, duration: duration, point: point, completion: completion)
+            showToast(toast, duration: duration, point: point, animationType: animationType, completion: completion)
         } catch ToastError.missingParameters {
             print("Error: message, title, and image cannot all be nil")
         } catch {}
@@ -149,9 +149,9 @@ public extension UIView {
      @param completion The completion block, executed after the toast view disappears.
      didTap will be `true` if the toast view was dismissed from a tap.
      */
-    func showToast(_ toast: UIView, duration: TimeInterval = ToastManager.shared.duration, position: ToastPosition = ToastManager.shared.position, completion: ((_ didTap: Bool) -> Void)? = nil) {
+    func showToast(_ toast: UIView, duration: TimeInterval = ToastManager.shared.duration, position: ToastPosition = ToastManager.shared.position, animationType: ToastAnimationType, completion: ((_ didTap: Bool) -> Void)? = nil) {
         let point = position.centerPoint(forToast: toast, inSuperview: self)
-        showToast(toast, duration: duration, point: point, completion: completion)
+        showToast(toast, duration: duration, point: point, animationType: animationType, completion: completion)
     }
     
     /**
@@ -165,7 +165,7 @@ public extension UIView {
      @param completion The completion block, executed after the toast view disappears.
      didTap will be `true` if the toast view was dismissed from a tap.
      */
-    func showToast(_ toast: UIView, duration: TimeInterval = ToastManager.shared.duration, point: CGPoint, completion: ((_ didTap: Bool) -> Void)? = nil) {
+    func showToast(_ toast: UIView, duration: TimeInterval = ToastManager.shared.duration, point: CGPoint, animationType: ToastAnimationType, completion: ((_ didTap: Bool) -> Void)? = nil) {
         objc_setAssociatedObject(toast, &ToastKeys.completion, ToastCompletionWrapper(completion), .OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         
         if ToastManager.shared.isQueueEnabled, activeToasts.count > 0 {
@@ -174,7 +174,11 @@ public extension UIView {
             
             queue.add(toast)
         } else {
-            showToast(toast, duration: duration, point: point)
+            hideAllToasts()
+            switch animationType {
+            case .fade:       showFadeToast(toast, duration: duration, point: point)
+            case .dumping:    showDumpingToast(toast, duration: duration, point: point)
+            }
         }
     }
     
@@ -334,7 +338,7 @@ public extension UIView {
     
     // MARK: - Private Show/Hide Methods
     
-    private func showToast(_ toast: UIView, duration: TimeInterval, point: CGPoint) {
+    private func showFadeToast(_ toast: UIView, duration: TimeInterval, point: CGPoint) {
         toast.center = point
         toast.alpha = 0.0
         
@@ -351,6 +355,28 @@ public extension UIView {
         UIView.animate(withDuration: ToastManager.shared.style.fadeDuration, delay: 0.0, options: [.curveEaseOut, .allowUserInteraction], animations: {
             toast.alpha = 1.0
         }) { _ in
+            let timer = Timer(timeInterval: duration, target: self, selector: #selector(UIView.toastTimerDidFinish(_:)), userInfo: toast, repeats: false)
+            RunLoop.main.add(timer, forMode: .common)
+            objc_setAssociatedObject(toast, &ToastKeys.timer, timer, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        }
+    }
+    
+    private func showDumpingToast(_ toast: UIView, duration: TimeInterval, point: CGPoint) {
+        toast.center = CGPoint(x: point.x, y: point.y - UIView.safeTopAreaHeight - 24)
+        
+        if ToastManager.shared.isTapToDismissEnabled {
+            let recognizer = UITapGestureRecognizer(target: self, action: #selector(UIView.handleToastTapped(_:)))
+            toast.addGestureRecognizer(recognizer)
+            toast.isUserInteractionEnabled = true
+            toast.isExclusiveTouch = true
+        }
+        
+        activeToasts.add(toast)
+        self.addSubview(toast)
+        
+        UIView.animate(withDuration: ToastManager.shared.style.dumpingDuration, delay: 0, usingSpringWithDamping: 0.6, initialSpringVelocity: 5, options: .allowUserInteraction) {
+            toast.center = point
+        } completion: { (_) in
             let timer = Timer(timeInterval: duration, target: self, selector: #selector(UIView.toastTimerDidFinish(_:)), userInfo: toast, repeats: false)
             RunLoop.main.add(timer, forMode: .common)
             objc_setAssociatedObject(toast, &ToastKeys.timer, timer, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
@@ -374,7 +400,7 @@ public extension UIView {
             
             if let nextToast = self.queue.firstObject as? UIView, let duration = objc_getAssociatedObject(nextToast, &ToastKeys.duration) as? NSNumber, let point = objc_getAssociatedObject(nextToast, &ToastKeys.point) as? NSValue {
                 self.queue.removeObject(at: 0)
-                self.showToast(nextToast, duration: duration.doubleValue, point: point.cgPointValue)
+                self.showFadeToast(nextToast, duration: duration.doubleValue, point: point.cgPointValue)
             }
         }
     }
@@ -679,6 +705,11 @@ public struct ToastStyle {
     public var fadeDuration: TimeInterval = 0.2
     
     /**
+     The dumping in/out animation duration. Default is 0.2.
+     */
+    public var dumpingDuration: TimeInterval = 0.4
+    
+    /**
      Activity indicator color. Default is `.white`.
      */
     public var activityIndicatorColor: UIColor = .white
@@ -743,7 +774,16 @@ public class ToastManager {
      */
     public var position: ToastPosition = .bottom
     
+    public var animationType: ToastAnimationType = .fade
 }
+
+
+// MARK: -ToastAnimationType
+public enum ToastAnimationType {
+    case fade
+    case dumping
+}
+
 
 // MARK: - ToastPosition
 
@@ -779,4 +819,11 @@ private extension UIView {
         }
     }
     
+    static var safeTopAreaHeight: CGFloat {
+        if #available(iOS 11.0, *) {
+            return UIApplication.shared.keyWindow?.safeAreaInsets.top ?? 0
+        } else {
+            return 0
+        }
+    }
 }
