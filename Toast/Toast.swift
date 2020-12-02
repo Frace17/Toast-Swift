@@ -106,10 +106,10 @@ public extension UIView {
      @param completion The completion closure, executed after the toast view disappears.
             didTap will be `true` if the toast view was dismissed from a tap.
      */
-    func makeToast(_ message: String?, duration: TimeInterval = ToastManager.shared.duration, position: ToastPosition = ToastManager.shared.position, title: String? = nil, image: UIImage? = nil, animationType: ToastAnimationType = ToastManager.shared.animationType, style: ToastStyle = ToastManager.shared.style, completion: ((_ didTap: Bool) -> Void)? = nil) {
+    func makeToast(_ message: String?, duration: TimeInterval = ToastManager.shared.duration, position: ToastPosition = ToastManager.shared.position, title: String? = nil, image: UIImage? = nil, style: ToastStyle = ToastManager.shared.style, completion: ((_ didTap: Bool) -> Void)? = nil) {
         do {
             let toast = try toastViewForMessage(message, title: title, image: image, style: style)
-            showToast(toast, duration: duration, position: position, animationType: animationType, completion: completion)
+            showToast(toast, duration: duration, position: position, animationType: style.animationType, completion: completion)
         } catch ToastError.missingParameters {
             print("Error: message, title, and image are all nil")
         } catch {}
@@ -127,10 +127,10 @@ public extension UIView {
      @param completion The completion closure, executed after the toast view disappears.
             didTap will be `true` if the toast view was dismissed from a tap.
      */
-    func makeToast(_ message: String?, duration: TimeInterval = ToastManager.shared.duration, point: CGPoint, title: String?, image: UIImage?, animationType: ToastAnimationType = ToastManager.shared.animationType, style: ToastStyle = ToastManager.shared.style, completion: ((_ didTap: Bool) -> Void)?) {
+    func makeToast(_ message: String?, duration: TimeInterval = ToastManager.shared.duration, point: CGPoint, title: String?, image: UIImage?, style: ToastStyle = ToastManager.shared.style, completion: ((_ didTap: Bool) -> Void)?) {
         do {
             let toast = try toastViewForMessage(message, title: title, image: image, style: style)
-            showToast(toast, duration: duration, point: point, animationType: animationType, completion: completion)
+            showToast(toast, duration: duration, point: point, animationType: style.animationType, completion: completion)
         } catch ToastError.missingParameters {
             print("Error: message, title, and image cannot all be nil")
         } catch {}
@@ -719,7 +719,17 @@ public struct ToastStyle {
      */
     public var activityBackgroundColor: UIColor = UIColor.black.withAlphaComponent(0.8)
     
+    
+    public var animationType: ToastAnimationType = .fade
 }
+
+
+// MARK: -ToastAnimationType
+public enum ToastAnimationType {
+    case fade
+    case dumping
+}
+
 
 // MARK: - Toast Manager
 
@@ -774,14 +784,6 @@ public class ToastManager {
      */
     public var position: ToastPosition = .bottom
     
-    public var animationType: ToastAnimationType = .fade
-}
-
-
-// MARK: -ToastAnimationType
-public enum ToastAnimationType {
-    case fade
-    case dumping
 }
 
 
