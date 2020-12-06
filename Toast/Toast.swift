@@ -413,7 +413,7 @@ public extension UIView {
         UIView.animate(withDuration: ToastManager.shared.style.dumpingDuration, delay: 0.0, options: .allowUserInteraction, animations: {
             let position = ToastManager.shared.position
             let point = position.centerPoint(forToast: toast, inSuperview: self)
-            toast.center = CGPoint(x: point.x, y: point.y - UIView.safeTopAreaHeight - 24)
+            toast.center = CGPoint(x: point.x, y: -toast.frame.height)
         }) { _ in
             toast.removeFromSuperview()
             self.activeToasts.remove(toast)
