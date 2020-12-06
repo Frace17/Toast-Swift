@@ -174,6 +174,20 @@ public extension UIView {
             
             queue.add(toast)
         } else {
+            if ToastManager.shared.isTapToDismissEnabled {
+                let recognizer = UITapGestureRecognizer(target: self, action: #selector(UIView.handleToastTapped(_:)))
+                toast.addGestureRecognizer(recognizer)
+                toast.isUserInteractionEnabled = true
+                toast.isExclusiveTouch = true
+            }
+            
+            if ToastManager.shared.isSwipeToDismissEnabled {
+                let recognizer = UISwipeGestureRecognizer(target: self, action: #selector(UIView.handleToastSwipped(_:)))
+                recognizer.direction = .up
+                toast.addGestureRecognizer(recognizer)
+                toast.isUserInteractionEnabled = true
+            }
+            
             hideAllToasts()
             switch animationType {
             case .fade:       showFadeToast(toast, duration: duration, point: point)
@@ -342,13 +356,6 @@ public extension UIView {
         toast.center = point
         toast.alpha = 0.0
         
-        if ToastManager.shared.isTapToDismissEnabled {
-            let recognizer = UITapGestureRecognizer(target: self, action: #selector(UIView.handleToastTapped(_:)))
-            toast.addGestureRecognizer(recognizer)
-            toast.isUserInteractionEnabled = true
-            toast.isExclusiveTouch = true
-        }
-        
         activeToasts.add(toast)
         self.addSubview(toast)
         
@@ -363,13 +370,6 @@ public extension UIView {
     
     private func showDumpingToast(_ toast: UIView, duration: TimeInterval, point: CGPoint) {
         toast.center = CGPoint(x: point.x, y: point.y - UIView.safeTopAreaHeight - 24)
-        
-        if ToastManager.shared.isTapToDismissEnabled {
-            let recognizer = UITapGestureRecognizer(target: self, action: #selector(UIView.handleToastTapped(_:)))
-            toast.addGestureRecognizer(recognizer)
-            toast.isUserInteractionEnabled = true
-            toast.isExclusiveTouch = true
-        }
         
         activeToasts.add(toast)
         self.addSubview(toast)
@@ -405,12 +405,42 @@ public extension UIView {
         }
     }
     
+    private func hideToast(_ toast: UIView, fromSwipe: Bool) {
+        if let timer = objc_getAssociatedObject(toast, &ToastKeys.timer) as? Timer {
+            timer.invalidate()
+        }
+        
+        UIView.animate(withDuration: ToastManager.shared.style.dumpingDuration, delay: 0.0, options: .allowUserInteraction, animations: {
+            let position = ToastManager.shared.position
+            let point = position.centerPoint(forToast: toast, inSuperview: self)
+            toast.center = CGPoint(x: point.x, y: point.y - UIView.safeTopAreaHeight - 24)
+        }) { _ in
+            toast.removeFromSuperview()
+            self.activeToasts.remove(toast)
+            
+            if let wrapper = objc_getAssociatedObject(toast, &ToastKeys.completion) as? ToastCompletionWrapper, let completion = wrapper.completion {
+                completion(fromSwipe)
+            }
+            
+            if let nextToast = self.queue.firstObject as? UIView, let duration = objc_getAssociatedObject(nextToast, &ToastKeys.duration) as? NSNumber, let point = objc_getAssociatedObject(nextToast, &ToastKeys.point) as? NSValue {
+                self.queue.removeObject(at: 0)
+                self.showDumpingToast(nextToast, duration: duration.doubleValue, point: point.cgPointValue)
+            }
+        }
+    }
+    
     // MARK: - Events
     
     @objc
     private func handleToastTapped(_ recognizer: UITapGestureRecognizer) {
         guard let toast = recognizer.view else { return }
         hideToast(toast, fromTap: true)
+    }
+    
+    @objc
+    private func handleToastSwipped(_ recognizer: UISwipeGestureRecognizer) {
+        guard let toast = recognizer.view else { return }
+        hideToast(toast, fromSwipe: true)
     }
     
     @objc
@@ -762,6 +792,12 @@ public class ToastManager {
      
      */
     public var isTapToDismissEnabled = true
+    
+    /**
+     Enables or disables swipe to dismiss on toast views. Default is `true`.
+     
+     */
+    public var isSwipeToDismissEnabled = true
     
     /**
      Enables or disables queueing behavior for toast views. When `true`,
